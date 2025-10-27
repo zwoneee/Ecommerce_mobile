@@ -1,4 +1,3 @@
-// lib/screens/product_detail_screen.dart
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -184,7 +183,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final p = _product!;
     return Scaffold(
       appBar: AppBar(
-        title: Text(p.name),
+        title: Text(p.name, textAlign: TextAlign.left),
         actions: [
           Consumer<CartProvider>(
             builder: (_, cart, __) => IconButton(
@@ -219,37 +218,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         ],
       ),
       body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          p.thumbnailUrl.isNotEmpty
-          ? Image.network(p.thumbnailUrl, height: 240, width: double.infinity, fit: BoxFit.cover)
-              : Container(height: 240, color: Colors.grey.shade300),
-      const SizedBox(height: 12),
-      Text(p.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 8),
-      Text('\$${p.price.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, color: Colors.green)),
-      const SizedBox(height: 12),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            p.thumbnailUrl.isNotEmpty
+                ? Image.network(p.thumbnailUrl, height: 240, width: double.infinity, fit: BoxFit.cover)
+                : Container(height: 240, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            Text(p.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), textAlign: TextAlign.left),
+            const SizedBox(height: 8),
+            Text('\$${p.price.toStringAsFixed(2)}', style: const TextStyle(fontSize: 18, color: Colors.green), textAlign: TextAlign.left),
+            const SizedBox(height: 12),
             _buildProductDescription(p),
             const SizedBox(height: 16),
-            Row(children: [
-              ElevatedButton.icon(onPressed: _addToCart, icon: const Icon(Icons.add_shopping_cart), label: const Text('Add to cart')),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  final auth = Provider.of<AuthProvider>(context, listen: false);
-                  if (!auth.isAuthenticated) {
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen(nextRoute: '/chat')));
-                  } else {
-                    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
-                  }
-                },
-                icon: const Icon(Icons.chat),
-                label: const Text('Chat'),
-              ),
-            ]),
+            Row(
+              children: [
+                ElevatedButton.icon(onPressed: _addToCart, icon: const Icon(Icons.add_shopping_cart), label: const Text('Add to cart')),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    final auth = Provider.of<AuthProvider>(context, listen: false);
+                    if (!auth.isAuthenticated) {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen(nextRoute: '/chat')));
+                    } else {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ChatScreen()));
+                    }
+                  },
+                  icon: const Icon(Icons.chat),
+                  label: const Text('Chat'),
+                ),
+              ],
+            ),
             const SizedBox(height: 24),
             CommentsSection(productId: p.id),
-          ]),
+          ],
+        ),
       ),
     );
   }
@@ -310,7 +314,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Widget _buildProductDescription(Product product) {
     if (product.description.trim().isEmpty) {
-      return const Text('Chưa có mô tả cho sản phẩm này.');
+      return const Text('Chưa có mô tả cho sản phẩm này.', textAlign: TextAlign.left);
     }
 
     final type = _detectProductType(product);
@@ -324,7 +328,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       case _ProductType.tablet:
         return _buildTabletDescription(specs);
       case _ProductType.other:
-        return Text(product.description);
+        return Text(product.description, textAlign: TextAlign.left);
     }
   }
 
@@ -353,7 +357,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     if (rows.isEmpty) {
-      return const Text('Thông số kỹ thuật đang được cập nhật.');
+      return const Text('Thông số kỹ thuật đang được cập nhật.', textAlign: TextAlign.left);
     }
 
     return Card(
@@ -363,7 +367,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('THÔNG SỐ KỸ THUẬT', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text('THÔNG SỐ KỸ THUẬT', style: TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.left),
             const SizedBox(height: 12),
             Table(
               columnWidths: const {
@@ -388,11 +392,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return map;
   }
 
-  Widget _buildSectionedExpansion(
-      Map<String, List<String>> sections,
-      List<_SpecItem> specs, {
-        String fallbackTitle = 'Thông tin khác',
-      }) {
+  Widget _buildSectionedExpansion(Map<String, List<String>> sections, List<_SpecItem> specs, {String fallbackTitle = 'Thông tin khác'}) {
     final specMap = _toSpecMap(specs);
     final tiles = <Widget>[];
 
@@ -415,7 +415,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     if (tiles.isEmpty) {
-      return const Text('Thông số kỹ thuật đang được cập nhật.');
+      return const Text('Thông số kỹ thuật đang được cập nhật.', textAlign: TextAlign.left);
     }
 
     return Column(children: tiles);
@@ -426,7 +426,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600), textAlign: TextAlign.left),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -440,7 +440,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: ExpansionTile(
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600), textAlign: TextAlign.left),
         children: items
             .map(
               (item) => Padding(
@@ -448,7 +448,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.key, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(item.key, style: const TextStyle(fontWeight: FontWeight.w600), textAlign: TextAlign.left),
                 const SizedBox(height: 4),
                 _buildValueText(item.value),
               ],
@@ -464,8 +464,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final lines = value.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
 
     if (lines.length <= 1) {
-      // Nếu chỉ có một dòng mô tả, hiển thị như bình thường
-      return Text(value.trim());
+      return Text(value.trim(), textAlign: TextAlign.left);
     }
 
     return Column(
@@ -477,8 +476,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('• '),
-                Expanded(child: Text(lines[i])),
+                const Text('• ', textAlign: TextAlign.left),
+                Expanded(child: Text(lines[i], textAlign: TextAlign.left)),
               ],
             ),
           ),
