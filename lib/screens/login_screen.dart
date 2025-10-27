@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? nextRoute;
@@ -68,7 +69,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _openRegister() async {
     if (_loading) return;
-    final result = await Navigator.of(context).pushNamed<bool>('/register');
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
+    );
     if (result == true) {
       _handleSuccessNavigation();
     }
