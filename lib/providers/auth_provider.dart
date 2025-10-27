@@ -17,8 +17,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   bool get isAuthenticated => _isAuthenticated;
+
   Map<String, dynamic>? get user => _user;
+
   String? get token => _token;
+
   int? get userId {
     final value = _user?['id'] ?? _user?['userId'] ?? _user?['sub'];
     if (value is int) return value;
@@ -123,6 +126,43 @@ class AuthProvider extends ChangeNotifier {
       print('AuthProvider.login error: $e');
       return false;
     }
+  }
+
+  Future<Map<String, dynamic>> register({
+    required String username,
+    required String password,
+    required String name,
+    required String email,
+  }) async {
+    final result = await api.register(
+      username: username,
+      password: password,
+      name: name,
+      email: email,
+    );
+
+    final success = result['success'] == true;
+    final message = result['message']?.toString();
+
+    if (!success) {
+      return {
+        'success': false,
+        if (message != null) 'message': message,
+      };
+    }
+
+    final autoLogin = await login(username, password);
+    if (!autoLogin) {
+      return {
+        'success': false,
+        'message': 'Đăng ký thành công nhưng đăng nhập tự động thất bại. Vui lòng đăng nhập lại.',
+      };
+    }
+
+    return {
+      'success': true,
+      if (message != null) 'message': message,
+    };
   }
 
   /// Set token manually (nếu cần)

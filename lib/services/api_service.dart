@@ -119,6 +119,61 @@ class ApiService {
     return {'token': token};
   }
 
+  Future<Map<String, dynamic>> register({
+    required String username,
+    required String password,
+    required String name,
+    required String email,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/api/auth/register',
+        data: {
+          'userName': username,
+          'password': password,
+          'name': name,
+          'email': email,
+        },
+        options: Options(
+          headers: {'Content-Type': 'application/json'},
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+
+      final success = response.statusCode != null && response.statusCode! >= 200 && response.statusCode! < 300;
+      String? message;
+
+      final data = response.data;
+      if (data is Map<String, dynamic>) {
+        message = data['message']?.toString() ?? data['error']?.toString();
+      } else if (data != null) {
+        message = data.toString();
+      }
+
+      return {
+        'success': success,
+        if (message != null && message.isNotEmpty) 'message': message,
+      };
+    } on DioException catch (e) {
+      String? message;
+      final data = e.response?.data;
+      if (data is Map<String, dynamic>) {
+        message = data['message']?.toString() ?? data['error']?.toString();
+      } else if (data != null) {
+        message = data.toString();
+      }
+      return {
+        'success': false,
+        if (message != null && message.isNotEmpty) 'message': message,
+      };
+    } catch (e) {
+      return {
+        'success': false,
+        'message': e.toString(),
+      };
+    }
+  }
+
   Future<void> logout() async {
     await clearToken();
   }
@@ -160,9 +215,9 @@ class ApiService {
   }
   Future<dynamic> checkoutCart(Map<String, dynamic> payload) async => (await _dio.post('/api/user/cart/checkout', data: payload)).data;
 
-  // -------------------------
-  // CHAT (REST)
-  // -------------------------
+// -------------------------
+// CHAT (REST)
+// -------------------------
   Future<Map<String, dynamic>> sendChatAsCustomer(Map<String, dynamic> payload) async {
     final response = await _dio.post(
       '/api/chat/customer/send',

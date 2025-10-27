@@ -26,60 +26,60 @@ class ChatMessage {
     required this.sentAt,
   });
 
-  /// Parse từ json động trả về từ API hoặc SignalR.
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    DateTime parseDate(dynamic value) {
-      if (value is DateTime) return value.toLocal();
-      if (value is String && value.isNotEmpty) {
-        try {
-          return DateTime.parse(value).toLocal();
-        } catch (_) {}
+    /// Parse từ json động trả về từ API hoặc SignalR.
+    factory ChatMessage.fromJson(Map<String, dynamic> json) {
+      DateTime parseDate(dynamic value) {
+        if (value is DateTime) return value.toLocal();
+        if (value is String && value.isNotEmpty) {
+          try {
+            return DateTime.parse(value).toLocal();
+          } catch (_) {}
+        }
+        return DateTime.now();
       }
-      return DateTime.now();
-    }
 
-    int? parseInt(dynamic value) {
-      if (value is int) return value;
-      if (value is String && value.isNotEmpty) {
-        return int.tryParse(value);
+      int? parseInt(dynamic value) {
+        if (value is int) return value;
+        if (value is String && value.isNotEmpty) {
+          return int.tryParse(value);
+        }
+        return null;
       }
-      return null;
+
+      String? parseString(dynamic value) {
+        if (value == null) return null;
+        if (value is String) return value;
+        return value.toString();
+      }
+
+      final normalized = Map<String, dynamic>.from(json);
+      return ChatMessage(
+        id: parseInt(normalized['id'] ?? normalized['messageId']),
+        fromUserId: parseInt(
+          normalized['fromUserId'] ??
+              normalized['from'] ??
+              normalized['senderId'] ??
+              normalized['sender'],
+        ),
+        toUserId: parseInt(
+          normalized['toUserId'] ??
+              normalized['to'] ??
+              normalized['receiverId'] ??
+              normalized['receiver'],
+        ),
+        content: parseString(normalized['content'] ?? normalized['message']) ?? '',
+        fileUrl: parseString(normalized['fileUrl'] ?? normalized['url']),
+        fileType: parseString(normalized['fileType'] ?? normalized['type']),
+        fileName: parseString(normalized['fileName'] ?? normalized['name']),
+        sentAt: parseDate(
+          normalized['sentAt'] ??
+              normalized['createdAt'] ??
+              normalized['timestamp'],
+        ),
+      );
     }
 
-    String? parseString(dynamic value) {
-      if (value == null) return null;
-      if (value is String) return value;
-      return value.toString();
-    }
-
-    final normalized = Map<String, dynamic>.from(json);
-    return ChatMessage(
-      id: parseInt(normalized['id'] ?? normalized['messageId']),
-      fromUserId: parseInt(
-        normalized['fromUserId'] ??
-            normalized['from'] ??
-            normalized['senderId'] ??
-            normalized['sender'],
-      ),
-      toUserId: parseInt(
-        normalized['toUserId'] ??
-            normalized['to'] ??
-            normalized['receiverId'] ??
-            normalized['receiver'],
-      ),
-      content: parseString(normalized['content'] ?? normalized['message']) ?? '',
-      fileUrl: parseString(normalized['fileUrl'] ?? normalized['url']),
-      fileType: parseString(normalized['fileType'] ?? normalized['type']),
-      fileName: parseString(normalized['fileName'] ?? normalized['name']),
-      sentAt: parseDate(
-        normalized['sentAt'] ??
-            normalized['createdAt'] ??
-            normalized['timestamp'],
-      ),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
+    Map<String, dynamic> toJson() => {
     'id': id,
     'fromUserId': fromUserId,
     'toUserId': toUserId,

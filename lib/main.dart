@@ -15,6 +15,7 @@ import 'providers/cart_provider.dart';
 import 'screens/product_list_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/chat_screen.dart';
+import 'screens/register_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +60,7 @@ class MyApp extends StatelessWidget {
       // một số route cơ bản
       routes: {
         '/login': (_) => const LoginScreen(),
+        '/register': (_) => const RegisterScreen(),
         '/chat': (_) => const ChatScreen(),
         '/products': (_) => const ProductListScreen(),
       },
