@@ -19,6 +19,12 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _isAuthenticated;
   Map<String, dynamic>? get user => _user;
   String? get token => _token;
+  int? get userId {
+    final value = _user?['id'] ?? _user?['userId'] ?? _user?['sub'];
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
 
   Future<void> _initialize() async {
     final t = await api.getToken();
@@ -45,13 +51,48 @@ class AuthProvider extends ChangeNotifier {
         final normalized = base64Url.normalize(payload);
         final decoded = utf8.decode(base64Url.decode(normalized));
         final Map<String, dynamic> map = jsonDecode(decoded);
-        if (map.containsKey('user')) {
-          _user = Map<String, dynamic>.from(map['user']);
-        } else {
-          _user = {};
-          if (map.containsKey('name')) _user!['name'] = map['name'];
-          if (map.containsKey('email')) _user!['email'] = map['email'];
-          if (map.containsKey('sub')) _user!['id'] = map['sub'];
+        _user = map.containsKey('user')
+            ? Map<String, dynamic>.from(map['user'])
+            : <String, dynamic>{};
+
+        void assignIfMissing(String key, dynamic value) {
+          if (value == null) return;
+          _user ??= {};
+          if (_user![key] != null) return;
+          _user![key] = value;
+        }
+
+        assignIfMissing('name', map['name'] ?? map['unique_name']);
+        assignIfMissing('email', map['email']);
+
+        final possibleIds = [
+          map['id'],
+          map['sub'],
+          map['nameid'],
+          map['nameId'],
+          map['userId'],
+          map['userid'],
+          map['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier'],
+        ];
+
+        for (final candidate in possibleIds) {
+          if (candidate == null) continue;
+          if (candidate is int) {
+            assignIfMissing('id', candidate);
+            break;
+          }
+          if (candidate is String) {
+            final parsed = int.tryParse(candidate);
+            assignIfMissing('id', parsed ?? candidate);
+            if (parsed != null) break;
+          }
+        }
+
+        if (!_user!.containsKey('role') && map['role'] != null) {
+          assignIfMissing('role', map['role']);
+        }
+        if (!_user!.containsKey('roles') && map['roles'] != null) {
+          assignIfMissing('roles', map['roles']);
         }
       }
     } catch (_) {

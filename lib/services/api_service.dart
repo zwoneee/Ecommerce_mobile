@@ -163,10 +163,62 @@ class ApiService {
   // -------------------------
   // CHAT (REST)
   // -------------------------
-  Future<dynamic> sendChatAsCustomer(Map<String, dynamic> payload) async => (await _dio.post('/api/chat/customer/send', data: payload)).data;
-  Future<List<dynamic>> getChatHistory({int? userId, int? limit}) async {
-    final r = await _dio.get('/api/chat/history', queryParameters: {'userId': userId, 'limit': limit});
-    return r.data as List<dynamic>;
+  Future<Map<String, dynamic>> sendChatAsCustomer(Map<String, dynamic> payload) async {
+    final response = await _dio.post(
+      '/api/chat/customer/send',
+      data: payload,
+      options: Options(headers: {'Content-Type': 'application/json'}),
+    );
+
+    if (response.data is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+
+    if (response.data is String && (response.data as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(response.data as String);
+        if (decoded is Map<String, dynamic>) {
+          return Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {}
+    }
+
+    return {
+      ...payload,
+      'sentAt': DateTime.now().toIso8601String(),
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getChatHistory({int? withUserId, int? limit}) async {
+    final params = <String, dynamic>{};
+    if (withUserId != null) params['withUserId'] = withUserId;
+    if (limit != null) params['limit'] = limit;
+
+    final response = await _dio.get(
+      '/api/chat/history',
+      queryParameters: params.isEmpty ? null : params,
+    );
+
+    if (response.data is List) {
+      return (response.data as List)
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+
+    if (response.data is String) {
+      try {
+        final decoded = jsonDecode(response.data as String);
+        if (decoded is List) {
+          return decoded
+              .whereType<Map<String, dynamic>>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+      } catch (_) {}
+    }
+
+    return const <Map<String, dynamic>>[];
   }
   Future<List<dynamic>> getChatUsers() async => (await _dio.get('/api/chat/users')).data as List<dynamic>;
 
