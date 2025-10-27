@@ -55,7 +55,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
     try {
       final api = Provider.of<ApiService>(context, listen: false);
       final data = await api.fetchProducts(page: page, pageSize: _pageSize);
-      // ignore: avoid_print
       print('fetchProducts response: $data');
 
       final raw = data['products'];
@@ -70,8 +69,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
               list.add(Product.fromJson(e));
             }
           } catch (itemEx) {
-            // ignore single item parse error
-            // ignore: avoid_print
             print('product parse error: $itemEx for item $e');
           }
         }
@@ -89,10 +86,16 @@ class _ProductListScreenState extends State<ProductListScreen> {
         _hasMore = list.length >= _pageSize;
       }
     } catch (e, st) {
-      // ignore: avoid_print
       print('Error fetching products: $e\n$st');
       if (showMessageOnError && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi tải sản phẩm: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi tải sản phẩm: $e'),
+            backgroundColor: Colors.red.shade400,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() {
@@ -118,94 +121,274 @@ class _ProductListScreenState extends State<ProductListScreen> {
     final auth = Provider.of<AuthProvider>(context);
 
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('Products'),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        title: const Text(
+          'Sản phẩm',
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         actions: [
-          IconButton(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CartScreen())),
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.shopping_cart),
-                if (cart.items.isNotEmpty)
-                  Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                      child: Text(
-                        cart.items.length.toString(),
-                        style: const TextStyle(color: Colors.white, fontSize: 10),
-                        textAlign: TextAlign.center,
+          // Cart button with badge
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CartScreen()),
+              ),
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.shopping_bag_outlined, color: Colors.blue.shade700, size: 24),
+                  ),
+                  if (cart.items.isNotEmpty)
+                    Positioned(
+                      right: -4,
+                      top: -4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.red.withOpacity(0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                        child: Text(
+                          cart.items.length.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-          auth.isAuthenticated
-              ? TextButton.icon(
-            onPressed: () async {
-              await auth.logout();
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã đăng xuất')));
-              setState(() {});
-            },
-            icon: const Icon(Icons.logout, color: Colors.white),
-            label: const Text('Logout', style: TextStyle(color: Colors.white)),
-          )
-              : TextButton.icon(
-            onPressed: () => Navigator.of(context).pushNamed('/login'),
-            icon: const Icon(Icons.login, color: Colors.white),
-            label: const Text('Login', style: TextStyle(color: Colors.white)),
+          // Auth button
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: auth.isAuthenticated
+                ? PopupMenuButton(
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.person_outline, color: Colors.grey.shade700, size: 24),
+              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  child: Row(
+                    children: [
+                      Icon(Icons.logout, size: 20, color: Colors.red.shade400),
+                      const SizedBox(width: 12),
+                      const Text('Đăng xuất'),
+                    ],
+                  ),
+                  onTap: () async {
+                    await Future.delayed(Duration.zero);
+                    await auth.logout();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Đã đăng xuất'),
+                          backgroundColor: Colors.green.shade400,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      );
+                    }
+                    setState(() {});
+                  },
+                ),
+              ],
+            )
+                : TextButton.icon(
+              onPressed: () => Navigator.of(context).pushNamed('/login'),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.blue.shade600,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.login, color: Colors.white, size: 20),
+              label: const Text('Đăng nhập', style: TextStyle(color: Colors.white)),
+            ),
           ),
         ],
       ),
       body: _loading && _products.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.blue.shade600),
+            const SizedBox(height: 16),
+            Text(
+              'Đang tải sản phẩm...',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+            ),
+          ],
+        ),
+      )
           : RefreshIndicator(
         onRefresh: _refresh,
+        color: Colors.blue.shade600,
         child: _products.isEmpty
             ? ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 120),
-            Center(child: Text('Không có sản phẩm')),
+          children: [
+            const SizedBox(height: 120),
+            Icon(Icons.inbox_outlined, size: 80, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            Center(
+              child: Text(
+                'Không có sản phẩm',
+                style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+              ),
+            ),
           ],
         )
-            : ListView.builder(
+            : GridView.builder(
           controller: _scrollController,
-          itemCount: _products.length + (_loadingMore ? 1 : 0),
+          padding: const EdgeInsets.all(16),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 0.75,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: _products.length + (_loadingMore ? 2 : 0),
           itemBuilder: (context, index) {
             if (index >= _products.length) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Center(child: CircularProgressIndicator()),
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.blue.shade600,
+                  ),
+                ),
               );
             }
             final p = _products[index];
-            return Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: ListTile(
-                leading: p.thumbnailUrl.isNotEmpty
-                    ? Image.network(
-                  p.thumbnailUrl,
-                  width: 56,
-                  height: 56,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported),
-                )
-                    : const SizedBox(width: 56, height: 56, child: Icon(Icons.image)),
-                title: Text(p.name),
-                subtitle: Text('\$${p.price.toStringAsFixed(2)}'),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () async {
-                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: p.id)));
-                },
-              ),
-            );
+            return _buildProductCard(p);
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductCard(Product p) {
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ProductDetailScreen(productId: p.id)),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Product image
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: p.thumbnailUrl.isNotEmpty
+                      ? Image.network(
+                    p.thumbnailUrl,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Center(
+                      child: Icon(Icons.image_not_supported, color: Colors.grey.shade400, size: 40),
+                    ),
+                  )
+                      : Center(
+                    child: Icon(Icons.image_outlined, color: Colors.grey.shade400, size: 40),
+                  ),
+                ),
+              ),
+            ),
+            // Product info
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Text(
+                        '\$${p.price.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(Icons.arrow_forward_ios, size: 12, color: Colors.blue.shade700),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
