@@ -18,6 +18,7 @@ class ProductListScreen extends StatefulWidget {
 
 class _ProductListScreenState extends State<ProductListScreen> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _loading = true;
   bool _loadingMore = false;
@@ -25,15 +26,20 @@ class _ProductListScreenState extends State<ProductListScreen> {
   int _page = 1;
   final int _pageSize = 20;
   final List<Product> _products = [];
+  final List<Product> _allProducts = [];
+  String _searchQuery = '';
+  List<String> _categories = [];
+  bool _loadingCategories = false;
 
   @override
   void initState() {
     super.initState();
     _fetch(page: 1);
+    _fetchCategories();
 
     _scrollController.addListener(() {
       if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
-        if (!_loadingMore && !_loading && _hasMore) {
+        if (!_loadingMore && !_loading && _hasMore && _searchQuery.isEmpty) {
           _loadMore();
         }
       }
@@ -43,7 +49,34 @@ class _ProductListScreenState extends State<ProductListScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchCategories() async {
+    setState(() => _loadingCategories = true);
+    try {
+      final api = Provider.of<ApiService>(context, listen: false);
+      final data = await api.fetchCategories();
+
+      if (mounted && data != null) {
+        final List<String> cats = [];
+        if (data is List) {
+          for (final item in data) {
+            if (item is String) {
+              cats.add(item as String);
+            } else if (item is Map && item['name'] != null) {
+              cats.add(item['name'].toString());
+            }
+          }
+        }
+        setState(() => _categories = cats);
+      }
+    } catch (e) {
+      print('Error fetching categories: $e');
+    } finally {
+      if (mounted) setState(() => _loadingCategories = false);
+    }
   }
 
   Future<void> _fetch({int page = 1, bool showMessageOnError = true}) async {
@@ -77,9 +110,12 @@ class _ProductListScreenState extends State<ProductListScreen> {
       if (mounted) {
         if (page == 1) {
           _products.clear();
+          _allProducts.clear();
           _products.addAll(list);
+          _allProducts.addAll(list);
         } else {
           _products.addAll(list);
+          _allProducts.addAll(list);
         }
 
         _page = page;
@@ -105,6 +141,21 @@ class _ProductListScreenState extends State<ProductListScreen> {
     }
   }
 
+  void _performSearch(String query) {
+    setState(() {
+      _searchQuery = query.toLowerCase();
+      if (_searchQuery.isEmpty) {
+        _products.clear();
+        _products.addAll(_allProducts);
+      } else {
+        _products.clear();
+        _products.addAll(
+          _allProducts.where((p) => p.name.toLowerCase().contains(_searchQuery)).toList(),
+        );
+      }
+    });
+  }
+
   Future<void> _loadMore() async {
     if (!_hasMore) return;
     final next = _page + 1;
@@ -112,7 +163,99 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> _refresh() async {
+    _searchController.clear();
+    _searchQuery = '';
     await _fetch(page: 1);
+  }
+
+  void _showCategoryDialog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        margin: const EdgeInsets.all(8),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                children: [
+                  const Text(
+                    'Danh mục',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (_loadingCategories)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: CircularProgressIndicator(),
+              )
+            else if (_categories.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Text('Không có danh mục'),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _categories.length,
+                itemBuilder: (context, index) {
+                  final category = _categories[index];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(Icons.category_outlined, color: Colors.blue.shade700, size: 20),
+                    ),
+                    title: Text(category),
+                    trailing: Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey.shade400),
+                    onTap: () {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Đã chọn danh mục: $category'),
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -125,8 +268,19 @@ class _ProductListScreenState extends State<ProductListScreen> {
       appBar: AppBar(
         elevation: 0,
         backgroundColor: Colors.white,
+        leading: IconButton(
+          onPressed: _showCategoryDialog,
+          icon: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(Icons.menu, color: Colors.blue.shade700, size: 24),
+          ),
+        ),
         title: const Text(
-          'Sản phẩm',
+          'Trang chủ',
           style: TextStyle(
             color: Colors.black87,
             fontSize: 24,
@@ -134,6 +288,29 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ),
         ),
         actions: [
+          // Search button
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: IconButton(
+              onPressed: () {
+                showSearch(
+                  context: context,
+                  delegate: ProductSearchDelegate(
+                    products: _allProducts,
+                    onSearch: _performSearch,
+                  ),
+                );
+              },
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.search, color: Colors.grey.shade700, size: 24),
+              ),
+            ),
+          ),
           // Cart button with badge
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -247,7 +424,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
             CircularProgressIndicator(color: Colors.blue.shade600),
             const SizedBox(height: 16),
             Text(
-              'Đang tải sản phẩm...',
+              'Đang tải sản phẩm mới nhất...',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
             ),
           ],
@@ -261,11 +438,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             const SizedBox(height: 120),
-            Icon(Icons.inbox_outlined, size: 80, color: Colors.grey.shade300),
+            Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
             const SizedBox(height: 16),
             Center(
               child: Text(
-                'Không có sản phẩm',
+                _searchQuery.isEmpty ? 'Không có sản phẩm' : 'Không tìm thấy sản phẩm',
                 style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
               ),
             ),
@@ -391,6 +568,94 @@ class _ProductListScreenState extends State<ProductListScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Search Delegate
+class ProductSearchDelegate extends SearchDelegate<Product?> {
+  final List<Product> products;
+  final Function(String) onSearch;
+
+  ProductSearchDelegate({required this.products, required this.onSearch});
+
+  @override
+  String get searchFieldLabel => 'Tìm kiếm sản phẩm...';
+
+  @override
+  List<Widget> buildActions(BuildContext context) {
+    return [
+      if (query.isNotEmpty)
+        IconButton(
+          icon: const Icon(Icons.clear),
+          onPressed: () {
+            query = '';
+            showSuggestions(context);
+          },
+        ),
+    ];
+  }
+
+  @override
+  Widget buildLeading(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.arrow_back),
+      onPressed: () => close(context, null),
+    );
+  }
+
+  @override
+  Widget buildResults(BuildContext context) {
+    onSearch(query);
+    close(context, null);
+    return const SizedBox.shrink();
+  }
+
+  @override
+  Widget buildSuggestions(BuildContext context) {
+    final suggestions = query.isEmpty
+        ? products.take(10).toList()
+        : products.where((p) => p.name.toLowerCase().contains(query.toLowerCase())).take(10).toList();
+
+    return ListView.builder(
+      itemCount: suggestions.length,
+      itemBuilder: (context, index) {
+        final product = suggestions[index];
+        return ListTile(
+          leading: product.thumbnailUrl.isNotEmpty
+              ? ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              product.thumbnailUrl,
+              width: 50,
+              height: 50,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                width: 50,
+                height: 50,
+                color: Colors.grey.shade200,
+                child: const Icon(Icons.image),
+              ),
+            ),
+          )
+              : Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.image),
+          ),
+          title: Text(product.name),
+          subtitle: Text('\$${product.price.toStringAsFixed(2)}'),
+          onTap: () {
+            query = product.name;
+            onSearch(query);
+            close(context, product);
+          },
+        );
+      },
     );
   }
 }

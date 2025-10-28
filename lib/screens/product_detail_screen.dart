@@ -35,7 +35,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       final api = Provider.of<ApiService>(context, listen: false);
       final data = await api.getProductDetail(widget.productId);
       if (data != null) {
-        _product = Product.fromJson(Map<String, dynamic>.from(data));
+        _product = Product.fromJson(Map<String, dynamic>.from(data), baseUrl: api.baseUrl);
       }
     } catch (e) {
       print('Load product error: $e');

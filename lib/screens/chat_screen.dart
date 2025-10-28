@@ -1,16 +1,11 @@
 // lib/screens/chat_screen.dart
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:signalr_core/signalr_core.dart';
+import 'package:timeago/timeago.dart' as timeago;
 
-import '../models/chat_message.dart';
-import '../providers/auth_provider.dart';
-import '../services/api_service.dart';
 import '../services/signalr_service.dart';
-import 'login_screen.dart';
+import '../providers/auth_provider.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -20,460 +15,400 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  late final SignalRService _signalRService;
-  late final ApiService _apiService;
-  AuthProvider? _auth;
-  bool _wasAuthenticated = false;
-
-  final TextEditingController _messageController = TextEditingController();
+  late final SignalRService sr;
+  final TextEditingController _ctrl = TextEditingController();
+  final List<Map<String, dynamic>> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  final List<ChatMessage> _messages = <ChatMessage>[];
-  final DateFormat _timeFormatter = DateFormat('HH:mm dd/MM');
-
-  StreamSubscription<Map<String, dynamic>>? _messageSubscription;
-
-  bool _loadingHistory = false;
-  bool _sending = false;
-  String? _historyError;
+  bool _isLoading = false;
+  bool _isConnected = false;
 
   @override
   void initState() {
     super.initState();
-    _signalRService = Provider.of<SignalRService>(context, listen: false);
-    _apiService = Provider.of<ApiService>(context, listen: false);
-    _auth = Provider.of<AuthProvider>(context, listen: false);
-    _wasAuthenticated = _auth?.isAuthenticated ?? false;
 
-    _messageSubscription = _signalRService.messagesStream.listen(_onRealtimeMessage);
+    sr = Provider.of<SignalRService>(context, listen: false);
 
-    if (_wasAuthenticated) {
-      _ensureConnection();
-      _loadHistory();
+    // Đăng ký stream message
+    sr.messagesStream.listen((m) {
+      if (mounted) {
+        setState(() => _messages.insert(0, m));
+        _scrollToBottom();
+      }
+    });
+
+    final auth = Provider.of<AuthProvider?>(context, listen: false);
+    final shouldStart = auth == null ? true : (auth.isAuthenticated == true);
+
+    if (shouldStart) {
+      if (sr.connectionState != HubConnectionState.connected) {
+        _initializeConnection();
+      } else {
+        setState(() => _isConnected = true);
+      }
+    } else {
+      print('ChatScreen: not authenticated, SignalR not started.');
     }
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final auth = Provider.of<AuthProvider>(context);
-    if (!identical(_auth, auth)) {
-      _auth = auth;
+  Future<void> _initializeConnection() async {
+    try {
+      await sr.start();
+      if (mounted) {
+        setState(() => _isConnected = true);
+      }
+    } catch (e) {
+      print('SignalR start err: $e');
+      if (mounted) {
+        _showErrorSnackBar('Failed to connect to chat');
+      }
     }
+  }
 
-    final isAuthenticated = auth.isAuthenticated;
-    if (isAuthenticated && !_wasAuthenticated) {
-      _wasAuthenticated = true;
-      _ensureConnection();
-      _loadHistory();
-    } else if (!isAuthenticated && _wasAuthenticated) {
-      _wasAuthenticated = false;
-      setState(() {
-        _messages.clear();
-        _historyError = null;
-        _loadingHistory = false;
-      });
+  void _scrollToBottom() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.minScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _send() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await sr.invoke('SendMessageToAdmin', args: [
+        {'message': text}
+      ]);
+      _ctrl.clear();
+    } catch (e) {
+      print('Error sending message: $e');
+      try {
+        await sr.sendChatViaRest({'message': text});
+        _ctrl.clear();
+      } catch (restError) {
+        _showErrorSnackBar('Failed to send message');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade400,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
   }
 
   @override
   void dispose() {
-    _messageSubscription?.cancel();
-    _messageController.dispose();
+    _ctrl.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _ensureConnection() async {
-    if (_auth?.isAuthenticated != true) return;
-    if (_signalRService.connectionState == HubConnectionState.connected) return;
-
-    try {
-      await _signalRService.start();
-    } catch (e) {
-      // ignore: avoid_print
-      print('SignalR start error: $e');
-    }
-  }
-
-  Future<void> _loadHistory() async {
-    if (_auth?.isAuthenticated != true) return;
-    setState(() {
-      _loadingHistory = true;
-      _historyError = null;
-    });
-
-    try {
-      final history = await _apiService.getChatHistory();
-      final parsed = history.map(ChatMessage.fromJson).toList()
-        ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
-
-      if (!mounted) return;
-      setState(() {
-        _messages
-          ..clear()
-          ..addAll(parsed);
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _historyError = e.toString();
-      });
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        _loadingHistory = false;
-      });
-    }
-  }
-
-  void _onRealtimeMessage(Map<String, dynamic> payload) {
-    try {
-      final message = ChatMessage.fromJson(payload);
-      final currentUserId = _auth?.userId;
-      if (currentUserId != null) {
-        final isParticipant = message.fromUserId == currentUserId || message.toUserId == currentUserId;
-        if (!isParticipant) return;
-      }
-      _addOrUpdateMessage(message);
-    } catch (e) {
-      // ignore: avoid_print
-      print('Không thể parse message realtime: $e');
-    }
-  }
-
-  void _addOrUpdateMessage(ChatMessage message) {
-    if (!mounted) return;
-    setState(() {
-      final existingIndex = _messages.indexWhere(
-            (element) => element.id != null && message.id != null && element.id == message.id,
-      );
-      if (existingIndex >= 0) {
-        _messages[existingIndex] = message;
-      } else {
-        _messages.add(message);
-      }
-      _messages.sort((a, b) => a.sentAt.compareTo(b.sentAt));
-    });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-  }
-
-  void _scrollToBottom() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
-  }
-
-  Future<void> _send() async {
-    if (_auth?.isAuthenticated != true) {
-      _openLogin();
-      return;
-    }
-
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    setState(() => _sending = true);
-    try {
-      final result = await _signalRService.sendChatViaRest({'content': text});
-      final message = ChatMessage.fromJson(result);
-      _addOrUpdateMessage(message);
-      _messageController.clear();
-      FocusScope.of(context).unfocus();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gửi tin nhắn thất bại: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _sending = false);
-      }
-    }
-  }
-
-  void _openLogin() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const LoginScreen(nextRoute: '/chat'),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isAuthenticated = _auth?.isAuthenticated ?? false;
-    final currentUserId = _auth?.userId;
-
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('Trò chuyện cùng cửa hàng'),
-        actions: [
-          if (isAuthenticated)
-            IconButton(
-              tooltip: 'Làm mới',
-              onPressed: _loadingHistory ? null : _loadHistory,
-              icon: const Icon(Icons.refresh),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Chat Support',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
             ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: _isConnected ? Colors.green : Colors.grey.shade400,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _isConnected ? 'Online' : 'Connecting...',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _isConnected ? Colors.green : Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.black87),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: const Text('Chat with our support team'),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
       body: Column(
         children: [
-          Expanded(child: _buildConversationArea(isAuthenticated, currentUserId)),
-          _buildInputArea(isAuthenticated),
+          Expanded(
+            child: _buildMessagesList(),
+          ),
+          _buildInputArea(),
         ],
       ),
     );
   }
 
-  Widget _buildConversationArea(bool isAuthenticated, int? currentUserId) {
-    if (!isAuthenticated) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.lock_outline, size: 48),
-              const SizedBox(height: 12),
-              const Text(
-                'Bạn cần đăng nhập để bắt đầu trò chuyện với đội ngũ hỗ trợ.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _openLogin,
-                child: const Text('Đăng nhập ngay'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_loadingHistory) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_historyError != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
-              const SizedBox(height: 12),
-              Text(
-                'Không thể tải lịch sử chat.\n$_historyError',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadHistory,
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
+  Widget _buildMessagesList() {
     if (_messages.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 24),
-          child: Text(
-            'Chưa có cuộc trò chuyện nào. Hãy gửi tin nhắn đầu tiên cho chúng tôi!',
-            textAlign: TextAlign.center,
-          ),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.chat_bubble_outline,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No messages yet',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Send a message to start chatting',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade500,
+              ),
+            ),
+          ],
         ),
       );
     }
 
     return ListView.builder(
-      controller: _scrollController,
       reverse: true,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
       itemCount: _messages.length,
-      itemBuilder: (context, index) {
-        final message = _messages[_messages.length - 1 - index];
-        return _buildMessageBubble(message, currentUserId);
+      itemBuilder: (context, i) {
+        final m = _messages[i];
+        final isAdmin = m['isAdmin'] ?? false;
+        final message = m['message']?.toString() ?? '';
+        final userName = m['user']?.toString() ?? 'Support';
+        final timestamp = m['timestamp'] as DateTime? ?? DateTime.now();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: _buildMessageBubble(
+            message: message,
+            isAdmin: isAdmin,
+            userName: userName,
+            timestamp: timestamp,
+          ),
+        );
       },
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message, int? currentUserId) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final isMine = currentUserId != null && message.fromUserId == currentUserId;
-
-    final bubbleColor = isMine ? scheme.primary : scheme.surfaceVariant;
-    final textColor = isMine ? scheme.onPrimary : scheme.onSurface;
-
-    final borderRadius = BorderRadius.only(
-      topLeft: const Radius.circular(18),
-      topRight: const Radius.circular(18),
-      bottomLeft: Radius.circular(isMine ? 18 : 4),
-      bottomRight: Radius.circular(isMine ? 4 : 18),
-    );
-
-    final children = <Widget>[];
-
-    if (message.hasAttachment) {
-      if (message.isImageAttachment) {
-        children.add(
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              message.fileUrl!,
-              width: 220,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => Container(
-                width: 220,
-                height: 120,
-                color: scheme.errorContainer,
-                alignment: Alignment.center,
+  Widget _buildMessageBubble({
+    required String message,
+    required bool isAdmin,
+    required String userName,
+    required DateTime timestamp,
+  }) {
+    return Align(
+      alignment: isAdmin ? Alignment.centerLeft : Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.75,
+        ),
+        child: Column(
+          crossAxisAlignment:
+          isAdmin ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+          children: [
+            if (isAdmin)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 4),
                 child: Text(
-                  'Không hiển thị được ảnh',
-                  style: TextStyle(color: scheme.onErrorContainer),
-                ),
-              ),
-            ),
-          ),
-        );
-      } else {
-        children.add(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                message.isVideoAttachment ? Icons.videocam_outlined : Icons.attach_file,
-                color: textColor,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: SelectableText(
-                  message.fileName ?? message.fileUrl ?? 'Tệp đính kèm',
+                  userName,
                   style: TextStyle(
-                    color: textColor,
-                    decoration: TextDecoration.underline,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
                   ),
                 ),
               ),
-            ],
-          ),
-        );
-      }
-
-      if (message.hasText) {
-        children.add(const SizedBox(height: 8));
-      }
-    }
-
-    if (message.hasText) {
-      children.add(
-        SelectableText(
-          message.content,
-          style: TextStyle(color: textColor),
-        ),
-      );
-    }
-
-    children.add(
-      Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Text(
-          _timeFormatter.format(message.sentAt),
-          style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 11),
-        ),
-      ),
-    );
-
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: borderRadius,
-        ),
-        constraints: const BoxConstraints(maxWidth: 320),
-        child: Column(
-          crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: children,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: isAdmin ? Colors.white : Colors.blue.shade500,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+                border: isAdmin ? Border.all(color: Colors.grey.shade200) : null,
+              ),
+              child: Text(
+                message,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isAdmin ? Colors.black87 : Colors.white,
+                  height: 1.4,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                timeago.format(timestamp),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildInputArea(bool isAuthenticated) {
-    if (!isAuthenticated) {
-      return SafeArea(
-        top: false,
-        child: Container(
-          width: double.infinity,
-          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.6),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+  Widget _buildInputArea() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
             children: [
-              const Text('Đăng nhập để trò chuyện cùng nhân viên hỗ trợ.'),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _openLogin,
-                  child: const Text('Đăng nhập'),
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.grey.shade300,
+                      width: 1,
+                    ),
+                  ),
+                  child: TextField(
+                    controller: _ctrl,
+                    maxLines: null,
+                    minLines: 1,
+                    enabled: _isConnected,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      hintText: _isConnected
+                          ? 'Type a message...'
+                          : 'Connecting...',
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                decoration: BoxDecoration(
+                  color: _isConnected && _ctrl.text.isNotEmpty
+                      ? Colors.blue.shade500
+                      : Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: (_isConnected && _ctrl.text.isNotEmpty && !_isLoading)
+                        ? _send
+                        : null,
+                    borderRadius: BorderRadius.circular(24),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: _isLoading
+                          ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                          const AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                          : Icon(
+                        Icons.send,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-        ),
-      );
-    }
-
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                textCapitalization: TextCapitalization.sentences,
-                minLines: 1,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText: 'Nhập nội dung tin nhắn...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: _sending ? null : _send,
-              icon: _sending
-                  ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-                  : const Icon(Icons.send),
-              color: Theme.of(context).colorScheme.primary,
-              tooltip: 'Gửi tin nhắn',
-            ),
-          ],
         ),
       ),
     );

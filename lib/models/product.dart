@@ -26,19 +26,44 @@ class Product {
     this.slug,
   });
 
-  factory Product.fromJson(Map<String, dynamic> j) => Product(
+  factory Product.fromJson(Map<String, dynamic> j, {String? baseUrl}) => Product(
     id: j['id'] is int ? j['id'] : int.parse('${j['id']}'),
     name: j['name']?.toString() ?? '',
-    price: (j['price'] ?? 0).toDouble(),
+    price: _parseDouble(j['price']),
     description: j['description']?.toString() ?? '',
-    thumbnailUrl: j['thumbnailUrl']?.toString() ?? '',
+    thumbnailUrl: _resolveThumbnailUrl(j['thumbnailUrl'], baseUrl),
     categoryId: j['categoryId'] is int ? j['categoryId'] : int.tryParse('${j['categoryId']}') ?? 0,
-    rating: (j['rating'] ?? 0).toDouble(),
+    rating: _parseDouble(j['rating']),
     isPromoted: j['isPromoted'] ?? false,
     qrCode: j['qrCode']?.toString(),
     stock: j['stock'] is int ? j['stock'] : int.tryParse('${j['stock']}') ?? 0,
     slug: j['slug']?.toString(),
   );
+
+  static double _parseDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
+  }
+
+  static String _resolveThumbnailUrl(dynamic rawValue, String? baseUrl) {
+    final url = rawValue?.toString() ?? '';
+    if (url.isEmpty) return '';
+    final lower = url.toLowerCase();
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      return url;
+    }
+
+    if (baseUrl == null || baseUrl.isEmpty) {
+      return url;
+    }
+
+    final normalizedBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    if (url.startsWith('/')) {
+      return '$normalizedBase$url';
+    }
+    return '$normalizedBase/$url';
+  }
 
   Map<String, dynamic> toJson() => {
     'id': id,

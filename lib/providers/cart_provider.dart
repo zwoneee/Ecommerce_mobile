@@ -44,18 +44,24 @@ class CartProvider extends ChangeNotifier {
 
   /// Build payload expected by backend for checkout / create order.
   /// Adjust keys to match your backend's DTO if necessary.
-  Map<String, dynamic> createOrderPayload({String? promotionCode}) {
+  Map<String, dynamic> createOrderPayload({
+    required int userId,
+    required String deliveryLocation,
+    String? promotionCode,
+  }) {
     final items = _items
         .map((it) => {
       'productId': it.product.id,
       'quantity': it.quantity,
-      'unitPrice': it.product.price, // optional
+      'unitPrice': it.product.price,
     })
         .toList();
 
     return {
+      'userId': userId,
       'items': items,
       'total': total,
+      'deliveryLocation': deliveryLocation,
       if (promotionCode != null && promotionCode.isNotEmpty) 'promotionCode': promotionCode,
       // add other fields required by your backend (shippingAddress, paymentMethod, etc.)
     };
@@ -63,18 +69,38 @@ class CartProvider extends ChangeNotifier {
 
   /// Checkout: call backend API to create order / checkout cart.
   /// Returns whatever the ApiService returns (usually order object or success response).
-  Future<dynamic> checkout({String? promotionCode}) async {
+  Future<Map<String, dynamic>> checkout({
+    required int userId,
+    required String deliveryLocation,
+    String? promotionCode,
+  }) async {
     if (_items.isEmpty) {
       throw Exception('Cart is empty');
     }
-    final payload = createOrderPayload(promotionCode: promotionCode);
+    final payload = createOrderPayload(
+      userId: userId,
+      deliveryLocation: deliveryLocation,
+      promotionCode: promotionCode,
+    );
     // your ApiService might have checkoutCart() or createOrder()
     // prefer checkoutCart if it maps to /api/user/cart/checkout
     try {
-      final res = await api.checkoutCart(payload);
+      final res = await api.createOrder(payload);
       return res;
     } catch (e) {
       // bubble up error so UI can show error message
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>> payAllPendingOrders({
+    required int userId,
+    required String paymentMethod,
+  }) async {
+    try {
+      final res = await api.payAllOrders(userId: userId, paymentMethod: paymentMethod);
+      return res;
+    } catch (e) {
       rethrow;
     }
   }

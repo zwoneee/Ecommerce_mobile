@@ -18,29 +18,99 @@ class ApiService {
     receiveTimeout: const Duration(seconds: 60),
     responseType: ResponseType.json,
   )) {
-    // Attach token automatically on every request if present
-    _dio.interceptors.add(InterceptorsWrapper(onRequest: (options, handler) async {
-      try {
-        final token = await getToken();
-        if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
-        }
-      } catch (_) {}
-      handler.next(options);
-    }, onError: (err, handler) {
-      // You can handle refresh token logic here if backend provides refresh endpoint
-      handler.next(err);
-    }));
+    // ✅ Gắn token cho mọi request
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) async {
+        try {
+          final token = await getToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+        } catch (_) {}
+        handler.next(options);
+      },
+      onError: (err, handler) => handler.next(err),
+    ));
   }
 
-  String get baseUrl => _dio.options.baseUrl ?? '';
+  // ✅ Tự động chọn baseUrl phù hợp
+  static String _resolveBaseUrl() {
+    if (kIsWeb) {
+      return 'http://192.168.1.5:5106'; // ⚠️ thay 192.168.1.5 bằng IP thật của máy backend
+    } else {
+      return 'http://10.0.2.2:5106';
+    }
+  }
 
-  // -------------------------
-  // Token helpers (delegate to TokenStorage)
-  // -------------------------
+  String get baseUrl => _dio.options.baseUrl;
+
+  Map<String, dynamic> _asMap(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(data);
+    }
+    if (data is Map) {
+      return data.map((key, value) => MapEntry(key.toString(), value));
+    }
+    if (data is String && data.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map) {
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
+        }
+      } catch (_) {}
+    }
+    return {'data': data};
+  }
+
+  List<Map<String, dynamic>> _asListOfMap(dynamic data) {
+    if (data is List) {
+      return data
+          .whereType<Map<dynamic, dynamic>>()
+          .map((e) => e.map((key, value) => MapEntry(key.toString(), value)))
+          .toList();
+    }
+    if (data is String && data.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is List) {
+          return decoded
+              .whereType<Map<dynamic, dynamic>>()
+              .map((e) => e.map((key, value) => MapEntry(key.toString(), value)))
+              .toList();
+        }
+      } catch (_) {}
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  // ------------------------- Token helpers -------------------------
   Future<void> saveToken(String token) async => await _storage.saveToken(token);
   Future<String?> getToken() async => await _storage.readToken();
   Future<void> clearToken() async => await _storage.clearToken();
+
+  // -------------------------
+  // Fetch Categories
+  // -------------------------
+  Future<List<Map<String, dynamic>>> fetchCategories() async {
+    try {
+      final response = await _dio.get('/api/public/categories');
+
+      // Kiểm tra nếu response có dữ liệu
+      if (response.data is List) {
+        return (response.data as List)
+            .whereType<Map<String, dynamic>>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+
+      // Nếu không có dữ liệu hợp lệ, trả về danh sách trống
+      return [];
+    } catch (e) {
+      // Lỗi khi fetch categories
+      print("Error fetching categories: $e");
+      return [];
+    }
+  }
 
   // -------------------------
   // AUTH
@@ -178,9 +248,7 @@ class ApiService {
     await clearToken();
   }
 
-  // -------------------------
-  // PRODUCTS
-  // -------------------------
+  // ------------------------- PRODUCTS -------------------------
   Future<Map<String, dynamic>> fetchProducts({int page = 1, int pageSize = 20}) async {
     final r = await _dio.get('/api/public/products', queryParameters: {'page': page, 'pageSize': pageSize});
     if (r.data is Map<String, dynamic>) return Map<String, dynamic>.from(r.data);
@@ -215,6 +283,26 @@ class ApiService {
   }
   Future<dynamic> checkoutCart(Map<String, dynamic> payload) async => (await _dio.post('/api/user/cart/checkout', data: payload)).data;
 
+  Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
+    final response = await _dio.post('/api/user/orders/create', data: payload);
+    return _asMap(response.data);
+  }
+
+  Future<Map<String, dynamic>> payAllOrders({required int userId, required String paymentMethod}) async {
+    final response = await _dio.post(
+      '/api/user/orders/pay-all',
+      data: {
+        'userId': userId,
+        'paymentMethod': paymentMethod,
+      },
+    );
+    return _asMap(response.data);
+  }
+
+  Future<List<Map<String, dynamic>>> getOrdersByUser(int userId) async {
+    final response = await _dio.get('/api/user/orders/user/$userId');
+    return _asListOfMap(response.data);
+  }
 // -------------------------
 // CHAT (REST)
 // -------------------------
