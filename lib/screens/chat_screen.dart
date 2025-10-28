@@ -21,12 +21,14 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _isLoading = false;
   bool _isConnected = false;
+  bool _hasText = false;
 
   @override
   void initState() {
     super.initState();
 
     sr = Provider.of<SignalRService>(context, listen: false);
+    _ctrl.addListener(_onTextChanged);
 
     // Đăng ký stream message
     sr.messagesStream.listen((m) {
@@ -102,6 +104,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _onTextChanged() {
+    final hasText = _ctrl.text.trim().isNotEmpty;
+    if (hasText != _hasText && mounted) {
+      setState(() => _hasText = hasText);
+    }
+  }
+
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -115,6 +124,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _ctrl.removeListener(_onTextChanged);
     _ctrl.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -372,7 +382,7 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(width: 8),
               Container(
                 decoration: BoxDecoration(
-                  color: _isConnected && _ctrl.text.isNotEmpty
+                  color: _isConnected && _hasText
                       ? Colors.blue.shade500
                       : Colors.grey.shade300,
                   shape: BoxShape.circle,
@@ -380,7 +390,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: (_isConnected && _ctrl.text.isNotEmpty && !_isLoading)
+                    onTap: (_isConnected && _hasText && !_isLoading)
                         ? _send
                         : null,
                     borderRadius: BorderRadius.circular(24),
