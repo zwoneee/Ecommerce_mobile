@@ -307,9 +307,16 @@ class ApiService {
 // CHAT (REST)
 // -------------------------
   Future<Map<String, dynamic>> sendChatAsCustomer(Map<String, dynamic> payload) async {
+    final data = Map<String, dynamic>.from(payload);
+    final message = data['message'];
+    final hasContent = data['content'] != null && data['content'].toString().trim().isNotEmpty;
+    if (!hasContent && message != null) {
+      data['content'] = message.toString();
+    }
+
     final response = await _dio.post(
       '/api/chat/customer/send',
-      data: payload,
+      data: data,
       options: Options(headers: {'Content-Type': 'application/json'}),
     );
 
@@ -327,7 +334,7 @@ class ApiService {
     }
 
     return {
-      ...payload,
+      ...data,
       'sentAt': DateTime.now().toIso8601String(),
     };
   }

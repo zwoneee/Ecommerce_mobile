@@ -84,15 +84,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
     setState(() => _isLoading = true);
 
+    final payload = {
+      'message': text,
+      'content': text,
+    };
+
     try {
-      await sr.invoke('SendMessageToAdmin', args: [
-        {'message': text}
-      ]);
+      await sr.invoke('SendMessageToAdmin', args: [payload]);
       _ctrl.clear();
     } catch (e) {
       print('Error sending message: $e');
       try {
-        await sr.sendChatViaRest({'message': text});
+        await sr.sendChatViaRest(payload);
         _ctrl.clear();
       } catch (restError) {
         _showErrorSnackBar('Failed to send message');
