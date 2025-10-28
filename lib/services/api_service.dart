@@ -11,9 +11,9 @@ class ApiService {
   final Dio _dio;
   final TokenStorage _storage = TokenStorage();
 
-  ApiService({required String baseUrl})
+  ApiService({String? baseUrl})
       : _dio = Dio(BaseOptions(
-    baseUrl: baseUrl,
+    baseUrl: baseUrl ?? _resolveBaseUrl(),
     connectTimeout: const Duration(seconds: 60),
     receiveTimeout: const Duration(seconds: 60),
     responseType: ResponseType.json,

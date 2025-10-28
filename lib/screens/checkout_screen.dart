@@ -48,6 +48,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _checkout() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final cart = Provider.of<CartProvider>(context, listen: false);
+    final api = Provider.of<ApiService>(context, listen: false);
 
     if (!auth.isAuthenticated) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,8 +96,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'paymentMethod': _paymentCtrl.text.isEmpty ? 'COD' : _paymentCtrl.text,
       };
 
-      final res = await ApiService(baseUrl: 'https://your-api-domain.com')
-          .createOrder(payload);
+      final res = await api.createOrder(payload);
 
       if (res.isNotEmpty && res['id'] != null) {
         ScaffoldMessenger.of(context).showSnackBar(
