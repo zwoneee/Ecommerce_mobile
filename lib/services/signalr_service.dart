@@ -128,9 +128,11 @@ class SignalRService {
 
   // Fallback: call REST endpoint to send chat (if hub not available)
   Future<Map<String, dynamic>> sendChatViaRest(Map<String, dynamic> payload) async {
-    // ApiService should provide sendChatAsCustomer/sendChatAsAdmin endpoints
     try {
-      return await api.sendChatAsCustomer(payload);
+      final message = await api.sendChatAsCustomer(payload);
+      // Push to listeners so UI gets immediate update even without SignalR.
+      _messagesController.add(Map<String, dynamic>.from(message));
+      return message;
     } catch (e) {
       rethrow;
     }

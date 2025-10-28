@@ -320,23 +320,25 @@ class ApiService {
       options: Options(headers: {'Content-Type': 'application/json'}),
     );
 
-    if (response.data is Map<String, dynamic>) {
-      return Map<String, dynamic>.from(response.data as Map);
-    }
+    Map<String, dynamic>? normalized;
 
-    if (response.data is String && (response.data as String).isNotEmpty) {
+    if (response.data is Map<String, dynamic>) {
+      normalized = Map<String, dynamic>.from(response.data as Map);
+    } else if (response.data is String && (response.data as String).isNotEmpty) {
       try {
         final decoded = jsonDecode(response.data as String);
         if (decoded is Map<String, dynamic>) {
-          return Map<String, dynamic>.from(decoded);
+          normalized = Map<String, dynamic>.from(decoded);
         }
       } catch (_) {}
     }
 
-    return {
+    normalized ??= {
       ...data,
       'sentAt': DateTime.now().toIso8601String(),
     };
+
+    return normalized;
   }
 
   Future<List<Map<String, dynamic>>> getChatHistory({int? withUserId, int? limit}) async {

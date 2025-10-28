@@ -1,4 +1,5 @@
 // lib/screens/chat_screen.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:signalr_core/signalr_core.dart';
@@ -93,11 +94,12 @@ class _ChatScreenState extends State<ChatScreen> {
       await sr.invoke('SendMessageToAdmin', args: [payload]);
       _ctrl.clear();
     } catch (e) {
-      print('Error sending message: $e');
+      debugPrint('SignalR send failed, falling back to REST: $e');
       try {
         await sr.sendChatViaRest(payload);
         _ctrl.clear();
       } catch (restError) {
+        debugPrint('REST send failed: $restError');
         _showErrorSnackBar('Failed to send message');
       }
     } finally {
