@@ -14,6 +14,17 @@ class SignalRService {
   // stream để UI (ChatScreen, CommentsSection...) lắng nghe message
   final StreamController<Map<String, dynamic>> _messagesController = StreamController.broadcast();
 
+  static const List<String> _defaultBroadcastMethods = [
+    'ReceiveMessage',
+    'ReceiveMessageToCustomer',
+    'ReceiveCustomerMessage',
+    'ReceiveMessageFromAdmin',
+    'ReceiveSupportMessage',
+    'ReceiveChatMessage',
+    'ReceiveMessageToClient',
+    'ReceiveComment',
+  ];
+
   // lưu handlers nếu register trước khi connection sẵn sàng
   final Map<String, HubHandler> _pendingHandlers = {};
 
@@ -77,8 +88,14 @@ class SignalRService {
 
     // default handler: if server sends generic messages we push into messagesStream
     // but we DO NOT override handlers registered via on(...)
-    _connection!.on('ReceiveMessage', (args) => _handleIncoming(args));
-    _connection!.on('ReceiveComment', (args) => _handleIncoming(args));
+    for (final method in _defaultBroadcastMethods) {
+      try {
+        _connection!.on(method, (args) => _handleIncoming(method, args));
+      } catch (e) {
+        // ignore: avoid_print
+        print('SignalR register default handler error for $method: $e');
+      }
+    }
 
     try {
       await _connection!.start();
@@ -113,6 +130,54 @@ class SignalRService {
     return await _connection?.invoke(methodName, args: args);
   }
 
+  Future<void> sendChatMessage(Map<String, dynamic> payload) async {
+    final data = Map<String, dynamic>.from(payload);
+    final methods = [
+      'SendMessageToAdmin',
+      'SendMessageToAdminAsync',
+      'SendMessage',
+      'SendMessageAsync',
+      'SendCustomerMessage',
+      'SendChatMessage',
+    ];
+
+    Object? lastError;
+    for (final method in methods) {
+      try {
+        await invoke(method, args: [data]);
+        return;
+      } catch (e) {
+        if (_isMethodMissingError(e)) {
+          lastError = e;
+          continue;
+        }
+        rethrow;
+      }
+    }
+    if (lastError != null) {
+      throw lastError!;
+    }
+  }
+
+  bool _isMethodMissingError(Object error) {
+    final str = error.toString().toLowerCase();
+    return str.contains('method does not exist');
+  }
+
+  Future<List<Map<String, dynamic>>> fetchChatHistory({int? withUserId, int? limit}) async {
+    final list = await api.getChatHistory(withUserId: withUserId, limit: limit);
+    return list
+        .map((e) {
+      try {
+        return Map<String, dynamic>.from(e);
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    })
+        .where((element) => element.isNotEmpty)
+        .toList();
+  }
+
   /// Stop connection
   Future<void> stop() async {
     try {
@@ -131,7 +196,9 @@ class SignalRService {
     try {
       final message = await api.sendChatAsCustomer(payload);
       // Push to listeners so UI gets immediate update even without SignalR.
-      _messagesController.add(Map<String, dynamic>.from(message));
+      final normalized = Map<String, dynamic>.from(message);
+      normalized['__method'] = 'REST';
+      _messagesController.add(normalized);
       return message;
     } catch (e) {
       rethrow;
@@ -139,22 +206,33 @@ class SignalRService {
   }
 
   // internal: convert incoming args into Map and add to stream
-  void _handleIncoming(List<Object?>? args) {
+  void _handleIncoming(String method, List<Object?>? args) {
     try {
-      if (args == null || args.isEmpty) return;
+      if (args == null || args.isEmpty) {
+        _messagesController.add({'__method': method});
+        return;
+      }
       final first = args.first;
       if (first is Map) {
-        _messagesController.add(Map<String, dynamic>.from(first));
+        final mapped = first.map((key, value) => MapEntry(key.toString(), value));
+        mapped['__method'] = method;
+        _messagesController.add(Map<String, dynamic>.from(mapped));
       } else if (first is String) {
         try {
           final decoded = jsonDecode(first);
-          if (decoded is Map<String, dynamic>) _messagesController.add(decoded);
+          if (decoded is Map) {
+            final mapped = decoded.map((key, value) => MapEntry(key.toString(), value));
+            mapped['__method'] = method;
+            _messagesController.add(Map<String, dynamic>.from(mapped));
+          } else {
+            _messagesController.add({'__method': method, 'message': first});
+          }
         } catch (_) {
           // if cannot parse, wrap raw string
-          _messagesController.add({'message': first});
+          _messagesController.add({'__method': method, 'message': first});
         }
       } else {
-        _messagesController.add({'payload': first.toString()});
+        _messagesController.add({'__method': method, 'payload': first.toString()});
       }
     } catch (_) {
       // ignore
