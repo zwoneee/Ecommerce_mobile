@@ -21,7 +21,9 @@ Future<void> main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
 
-    final baseUrl = kIsWeb ? 'https://localhost:7068' : 'http://10.0.2.2:5106';
+    final baseUrl = kIsWeb
+        ? 'https://localhost:7068'
+        : 'http://10.0.2.2:5106';
     final api = ApiService(baseUrl: baseUrl);
     final signalR = SignalRService(api: api);
 

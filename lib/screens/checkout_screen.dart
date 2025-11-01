@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../services/api_service.dart';
@@ -12,37 +13,22 @@ class CheckoutScreen extends StatefulWidget {
 }
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
+  final TextEditingController _nameCtrl = TextEditingController();
+  final TextEditingController _emailCtrl = TextEditingController();
+  final TextEditingController _mobileCtrl = TextEditingController();
   final TextEditingController _addressCtrl = TextEditingController();
-  final TextEditingController _paymentCtrl = TextEditingController();
+  String? _selectedPaymentMethod = 'COD'; // Default method
   bool _loading = false;
+
+  final List<String> _paymentMethods = ['-- Chọn --', 'COD', 'Chuyển khoản', 'VNPay'];
 
   @override
   void dispose() {
+    _nameCtrl.dispose();
+    _emailCtrl.dispose();
+    _mobileCtrl.dispose();
     _addressCtrl.dispose();
-    _paymentCtrl.dispose();
     super.dispose();
-  }
-
-  /// Hàm tính giảm giá (nếu tổng >= 500 thì giảm 10%)
-  Map<String, double> _calculateDiscount(double total) {
-    const discountThreshold = 500.0;
-    const discountPercent = 10.0;
-
-    if (total >= discountThreshold) {
-      final discountAmount = total * discountPercent / 100;
-      final finalTotal = total - discountAmount;
-      return {
-        'percent': discountPercent,
-        'amount': discountAmount,
-        'finalTotal': finalTotal,
-      };
-    } else {
-      return {
-        'percent': 0,
-        'amount': 0,
-        'finalTotal': total,
-      };
-    }
   }
 
   Future<void> _checkout() async {
@@ -65,25 +51,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return;
     }
 
+    final name = _nameCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
+    final mobile = _mobileCtrl.text.trim();
     final delivery = _addressCtrl.text.trim();
-    if (delivery.isEmpty) {
+
+    if (name.isEmpty || email.isEmpty || mobile.isEmpty || delivery.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng nhập địa điểm giao hàng.')),
+        const SnackBar(content: Text('Vui lòng điền đầy đủ thông tin.')),
       );
       return;
     }
-
-    // Tính giảm giá
-    final discountData = _calculateDiscount(cart.total);
-    final discountPercent = discountData['percent']!;
-    final discountAmount = discountData['amount']!;
-    final finalTotal = discountData['finalTotal']!;
 
     setState(() => _loading = true);
 
     try {
       final payload = {
         'userId': userId,
+        'name': name,
+        'email': email,
+        'mobile': mobile,
         'items': cart.items
             .map((it) => {
           'productId': it.product.id,
@@ -91,9 +78,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           'price': it.product.price,
         })
             .toList(),
-        'total': finalTotal,
+        'total': cart.total,
         'deliveryLocation': delivery,
-        'paymentMethod': _paymentCtrl.text.isEmpty ? 'COD' : _paymentCtrl.text,
+        'paymentMethod': _selectedPaymentMethod ?? 'COD',
       };
 
       final res = await api.createOrder(payload);
@@ -101,10 +88,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       if (res.isNotEmpty && res['id'] != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              '✅ Đơn hàng #${res['id']} đã được tạo thành công.\n'
-                  'Giảm giá: ${discountPercent.toInt()}% (${discountAmount.toStringAsFixed(2)}đ)',
-            ),
+            content: Text('✅ Đơn hàng #${res['id']} đã được tạo thành công.'),
           ),
         );
 
@@ -120,14 +104,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         SnackBar(content: Text('⚠️ Thanh toán thất bại: $e')),
       );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final cart = Provider.of<CartProvider>(context);
-    final discountData = _calculateDiscount(cart.total);
 
     return Scaffold(
       appBar: AppBar(
@@ -139,6 +122,65 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
+            // --- Thông tin người dùng ---
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Tên',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _emailCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _mobileCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Số điện thoại',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // --- Địa chỉ giao hàng ---
+            TextField(
+              controller: _addressCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Địa điểm giao hàng',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // --- Chọn phương thức thanh toán ---
+            DropdownButtonFormField<String>(
+              value: _selectedPaymentMethod,
+              decoration: const InputDecoration(
+                labelText: 'Phương thức thanh toán',
+                border: OutlineInputBorder(),
+              ),
+              items: _paymentMethods.map((String method) {
+                return DropdownMenuItem<String>(
+                  value: method,
+                  child: Text(method),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedPaymentMethod = value;
+                });
+              },
+            ),
+            const SizedBox(height: 20),
+
             // --- Danh sách sản phẩm ---
             Expanded(
               child: ListView.builder(
@@ -164,46 +206,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
             const SizedBox(height: 10),
 
-            // --- Tổng tiền + giảm giá ---
+            // --- Tổng tiền ---
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Tổng tiền: ${cart.total.toStringAsFixed(0)}đ'),
-                if (discountData['percent']! > 0)
-                  Text(
-                    'Giảm giá: ${discountData['percent']}% (-${discountData['amount']!.toStringAsFixed(0)}đ)',
-                    style: const TextStyle(color: Colors.green),
-                  ),
                 Text(
-                  'Thành tiền: ${discountData['finalTotal']!.toStringAsFixed(0)}đ',
+                  'Thành tiền: ${cart.total.toStringAsFixed(0)}đ',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
                 ),
               ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // --- Nhập địa chỉ giao hàng ---
-            TextField(
-              controller: _addressCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Địa điểm giao hàng',
-                border: OutlineInputBorder(),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // --- Nhập phương thức thanh toán ---
-            TextField(
-              controller: _paymentCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Phương thức thanh toán (ví dụ: COD, Momo...)',
-                border: OutlineInputBorder(),
-              ),
             ),
 
             const SizedBox(height: 20),

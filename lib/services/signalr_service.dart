@@ -242,23 +242,36 @@ class SignalRService {
   // simple reconnect with delays (ms)
   Future<void> _tryReconnect({String hubPath = '/chathub'}) async {
     const delays = [1000, 2000, 5000];
+
     for (final d in delays) {
-      if (_connection == null) return;
-      if (_connection!.state == HubConnectionState.connected) return;
-      // ignore: avoid_print
-      print('SignalR reconnect in ${d}ms...');
-      await Future.delayed(Duration(milliseconds: d));
-      try {
-        await _connection!.start();
-        // ignore: avoid_print
-        print('SignalR reconnected.');
+      // Nếu connection đã bị null -> tạo mới lại luôn
+      if (_connection == null) {
+        print('⚠️ _connection is null, reinitializing...');
+        await start(hubPath: hubPath);
+        if (_connection?.state == HubConnectionState.connected) {
+          print('✅ Reconnected successfully after reinit');
+          return;
+        }
+      }
+
+      // Nếu vẫn còn connection nhưng chưa connected -> thử restart
+      if (_connection!.state != HubConnectionState.connected) {
+        print('SignalR reconnect in ${d}ms...');
+        await Future.delayed(Duration(milliseconds: d));
+
+        try {
+          await _connection!.start();
+          print('✅ SignalR reconnected successfully.');
+          return;
+        } catch (e) {
+          print('❌ Reconnect attempt failed: $e');
+        }
+      } else {
+        print('ℹ️ Already connected, skip reconnect');
         return;
-      } catch (e) {
-        // ignore: avoid_print
-        print('Reconnect attempt failed: $e');
       }
     }
-    // ignore: avoid_print
-    print('SignalR failed to reconnect after attempts.');
+
+    print('❌ SignalR failed to reconnect after all attempts.');
   }
 }

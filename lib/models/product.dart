@@ -26,19 +26,35 @@ class Product {
     this.slug,
   });
 
-  factory Product.fromJson(Map<String, dynamic> j, {String? baseUrl}) => Product(
-    id: j['id'] is int ? j['id'] : int.parse('${j['id']}'),
-    name: j['name']?.toString() ?? '',
-    price: _parseDouble(j['price']),
-    description: j['description']?.toString() ?? '',
-    thumbnailUrl: _resolveThumbnailUrl(j['thumbnailUrl'], baseUrl),
-    categoryId: j['categoryId'] is int ? j['categoryId'] : int.tryParse('${j['categoryId']}') ?? 0,
-    rating: _parseDouble(j['rating']),
-    isPromoted: j['isPromoted'] ?? false,
-    qrCode: j['qrCode']?.toString(),
-    stock: j['stock'] is int ? j['stock'] : int.tryParse('${j['stock']}') ?? 0,
-    slug: j['slug']?.toString(),
-  );
+  factory Product.fromJson(Map<String, dynamic> j, {String? baseUrl}) {
+    // Hỗ trợ cả key viết hoa và viết thường
+    dynamic getVal(String k1, [String? k2]) {
+      if (j.containsKey(k1)) return j[k1];
+      if (k2 != null && j.containsKey(k2)) return j[k2];
+      return null;
+    }
+
+    return Product(
+      id: getVal('id', 'Id') is int
+          ? getVal('id', 'Id')
+          : int.tryParse('${getVal('id', 'Id')}') ?? 0,
+      name: getVal('name', 'Name')?.toString() ?? '',
+      price: _parseDouble(getVal('price', 'Price')),
+      description: getVal('description', 'Description')?.toString() ?? '',
+      thumbnailUrl:
+      _resolveThumbnailUrl(getVal('thumbnailUrl', 'ThumbnailUrl'), baseUrl),
+      categoryId: getVal('categoryId', 'CategoryId') is int
+          ? getVal('categoryId', 'CategoryId')
+          : int.tryParse('${getVal('categoryId', 'CategoryId')}') ?? 0,
+      rating: _parseDouble(getVal('rating', 'Rating')),
+      isPromoted: getVal('isPromoted', 'IsPromoted') ?? false,
+      qrCode: getVal('qrCode', 'QrCode')?.toString(),
+      stock: getVal('stock', 'Stock') is int
+          ? getVal('stock', 'Stock')
+          : int.tryParse('${getVal('stock', 'Stock')}') ?? 0,
+      slug: getVal('slug', 'Slug')?.toString(),
+    );
+  }
 
   static double _parseDouble(dynamic value) {
     if (value == null) return 0;
@@ -58,7 +74,9 @@ class Product {
       return url;
     }
 
-    final normalizedBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     if (url.startsWith('/')) {
       return '$normalizedBase$url';
     }
