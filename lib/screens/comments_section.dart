@@ -177,17 +177,6 @@ class _CommentsSectionState extends State<CommentsSection> {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
         children: [
-          Row(
-            children: List.generate(5, (i) {
-              return IconButton(
-                icon: Icon(
-                  i < _rating ? Icons.star : Icons.star_border,
-                  color: Colors.amber,
-                ),
-                onPressed: () => setState(() => _rating = i + 1.0),
-              );
-            }),
-          ),
           Container(
             decoration: BoxDecoration(
               color: Colors.grey.shade100,

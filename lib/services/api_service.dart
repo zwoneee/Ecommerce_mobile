@@ -88,9 +88,9 @@ class ApiService {
   Future<String?> getToken() async => await _storage.readToken();
   Future<void> clearToken() async => await _storage.clearToken();
 
-  // -------------------------
+  // ------------------------
   // Fetch Categories
-  // -------------------------
+  // ------------------------
   Future<List<Map<String, dynamic>>> fetchCategories() async {
     try {
       final response = await _dio.get('/api/public/categories');
@@ -112,11 +112,11 @@ class ApiService {
     }
   }
 
-  // -------------------------
+  // ------------------------
   // AUTH
   // - login: thử gửi variants để tránh mismatch email/username field
   // - loginRaw: trả toàn bộ response
-  // -------------------------
+  // ------------------------
   Future<String?> login(String usernameOrEmail, String password) async {
     final variants = <Map<String, dynamic>>[
       {'username': usernameOrEmail, 'email': usernameOrEmail, 'password': password},
@@ -261,9 +261,28 @@ class ApiService {
     return Map<String, dynamic>.from(r.data);
   }
 
-  // -------------------------
+  // ------------------------- RATINGS -------------------------
+  Future<Map<String, dynamic>> rateProduct(int productId, int value) async {
+    final response = await _dio.post(
+      '/api/user/products/$productId/rate',
+      data: {'value': value},
+    );
+    return _asMap(response.data);
+  }
+
+  Future<Map<String, dynamic>> getUserRating(int productId) async {
+    try {
+      final response = await _dio.get('/api/user/products/$productId/rating');
+      return _asMap(response.data);
+    } catch (e) {
+      // API có thể trả về 404 nếu chưa có rating, nên ta coi đó là { value: null }
+      return {'value': null};
+    }
+  }
+
+  // ------------------------
   // COMMENTS
-  // -------------------------
+  // ------------------------
   Future<List<dynamic>> getComments(int productId) async {
     final r = await _dio.get('/api/Comments/product/$productId');
     return r.data as List<dynamic>;
@@ -271,9 +290,9 @@ class ApiService {
 
   Future<dynamic> postComment(Map<String, dynamic> payload) async => (await _dio.post('/api/Comments', data: payload)).data;
 
-  // -------------------------
+  // ------------------------
   // CART / ORDERS
-  // -------------------------
+  // ------------------------
   Future<dynamic> getCart() async => (await _dio.get('/api/user/cart')).data;
   Future<dynamic> addToCart({required int productId, required int quantity}) async => (await _dio.post('/api/user/cart/items', data: {'productId': productId, 'quantity': quantity})).data;
   Future<dynamic> removeFromCart(int productId) async => (await _dio.delete('/api/user/cart/items/$productId')).data;
@@ -303,9 +322,9 @@ class ApiService {
     final response = await _dio.get('/api/user/orders/user/$userId');
     return _asListOfMap(response.data);
   }
-// -------------------------
+// ------------------------
 // CHAT (REST)
-// -------------------------
+// ------------------------
   Future<Map<String, dynamic>> sendChatAsCustomer(Map<String, dynamic> payload) async {
     final data = Map<String, dynamic>.from(payload);
     final message = data['message'];
@@ -381,9 +400,9 @@ class ApiService {
     return r.data;
   }
 
-  // -------------------------
+  // ------------------------
   // ADMIN helpers
-  // -------------------------
+  // ------------------------
   Future<Map<String, dynamic>> getAdminStatistics() async => Map<String, dynamic>.from((await _dio.get('/api/admin/statistics')).data);
   Future<List<dynamic>> getAdminInventory() async => (await _dio.get('/api/admin/inventory')).data as List<dynamic>;
   Future<List<dynamic>> getAdminChatHistory() async => (await _dio.get('/api/admin/chat/history')).data as List<dynamic>;

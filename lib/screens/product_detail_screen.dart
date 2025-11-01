@@ -22,6 +22,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _loading = true;
   Product? _product;
   int _quantity = 1;
+  int? _userRating;
 
   @override
   void initState() {
@@ -30,12 +31,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final api = Provider.of<ApiService>(context, listen: false);
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+
+      // Lấy chi tiết sản phẩm (bao gồm rating trung bình)
       final data = await api.getProductDetail(widget.productId);
-      if (data != null) {
+      if (mounted && data != null) {
         _product = Product.fromJson(Map<String, dynamic>.from(data), baseUrl: api.baseUrl);
+      }
+
+      // Nếu đã đăng nhập, lấy rating của user cho sản phẩm này
+      if (auth.isAuthenticated) {
+        final ratingData = await api.getUserRating(widget.productId);
+        if (mounted && ratingData['value'] is int) {
+          setState(() {
+            _userRating = ratingData['value'] as int?;
+          });
+        }
       }
     } catch (e) {
       print('Load product error: $e');
@@ -66,8 +81,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
+  // Gửi đánh giá mới lên server
+  Future<void> _submitRating(int newRating) async {
+    final api = Provider.of<ApiService>(context, listen: false);
+    try {
+      final response = await api.rateProduct(widget.productId, newRating);
+      if (mounted) {
+        final newAverage = response['average'];
+        setState(() {
+          _userRating = newRating;
+          if (newAverage is num) {
+            _product = _product?.copyWith(rating: newAverage.toDouble());
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cảm ơn bạn đã đánh giá sản phẩm!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Lỗi khi gửi đánh giá: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+
     if (_loading) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -148,29 +197,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 tag: 'product_${p.id}',
                 child: p.thumbnailUrl.isNotEmpty
                     ? Image.network(
-                  p.thumbnailUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey.shade200,
-                    child: Center(
-                      child: Icon(
-                        Icons.image_not_supported,
-                        size: 80,
-                        color: Colors.grey.shade400,
-                      ),
-                    ),
-                  ),
-                )
+                        p.thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: Colors.grey.shade200,
+                          child: Center(
+                            child: Icon(
+                              Icons.image_not_supported,
+                              size: 80,
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                        ),
+                      )
                     : Container(
-                  color: Colors.grey.shade200,
-                  child: Center(
-                    child: Icon(
-                      Icons.image_outlined,
-                      size: 80,
-                      color: Colors.grey.shade400,
-                    ),
-                  ),
-                ),
+                        color: Colors.grey.shade200,
+                        child: Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            size: 80,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ),
               ),
             ),
           ),
@@ -202,7 +251,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         ),
                         const SizedBox(height: 12),
 
-                        // Giá
+                        // Giá và Rating trung bình
                         Row(
                           children: [
                             Text(
@@ -214,7 +263,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               ),
                             ),
                             const Spacer(),
-                            // Rating (nếu có)
+                            // Chỉ hiển thị rating trung bình
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
@@ -226,7 +275,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   Icon(Icons.star, size: 18, color: Colors.amber.shade700),
                                   const SizedBox(width: 4),
                                   Text(
-                                    '4.5',
+                                    p.rating.toStringAsFixed(1),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: Colors.amber.shade900,
@@ -319,7 +368,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         // Chat button
                         InkWell(
                           onTap: () {
-                            final auth = Provider.of<AuthProvider>(context, listen: false);
                             if (!auth.isAuthenticated) {
                               Navigator.of(context).push(
                                 MaterialPageRoute(builder: (_) => const LoginScreen(nextRoute: '/chat')),
@@ -379,11 +427,49 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
 
-                  // Comments section
+                  // --- PHẦN ĐÁNH GIÁ VÀ BÌNH LUẬN ---
                   Container(
                     color: Colors.grey.shade50,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: CommentsSection(productId: p.id),
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                                Text(
+                                'Đánh giá của bạn',
+                                style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey.shade800,
+                                ),
+                                ),
+                                const SizedBox(height: 12),
+                                auth.isAuthenticated
+                                ? RatingBar(
+                                    initialRating: _userRating ?? 0,
+                                    onRatingUpdate: (rating) {
+                                    _submitRating(rating);
+                                    },
+                                )
+                                : TextButton(
+                                    onPressed: () {
+                                    Navigator.of(context).push(
+                                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                    );
+                                    },
+                                    child: const Text('Vui lòng đăng nhập để đánh giá sản phẩm.'),
+                                ),
+                            ],
+                          ),
+                        ),
+                        Divider(height: 1, indent: 20, endIndent: 20),
+                        CommentsSection(productId: p.id),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 100), // Space for bottom button
                 ],
@@ -468,6 +554,57 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Widget để hiển thị các ngôi sao cho việc rating
+class RatingBar extends StatelessWidget {
+  final int initialRating;
+  final Function(int) onRatingUpdate;
+  final double size;
+
+  const RatingBar({
+    super.key,
+    required this.initialRating,
+    required this.onRatingUpdate,
+    this.size = 32,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (index) {
+        final rating = index + 1;
+        return IconButton(
+          onPressed: () => onRatingUpdate(rating),
+          icon: Icon(
+            rating <= initialRating ? Icons.star : Icons.star_border,
+            color: Colors.amber,
+            size: size,
+          ),
+        );
+      }),
+    );
+  }
+}
+
+// Extension để thêm hàm copyWith cho Product model
+extension on Product {
+  Product copyWith({double? rating}) {
+    return Product(
+      id: id,
+      name: name,
+      price: price,
+      description: description,
+      thumbnailUrl: thumbnailUrl,
+      categoryId: categoryId,
+      rating: rating ?? this.rating,
+      isPromoted: isPromoted,
+      qrCode: qrCode,
+      stock: stock,
+      slug: slug,
     );
   }
 }
